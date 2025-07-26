@@ -1,0 +1,81 @@
+# JUCE Project .gitignore
+
+# Build directories
+Builds/
+build/
+Build/
+builds/
+
+# IDE files
+.vscode/
+.vs/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Generated files
+*.o
+*.obj
+*.exe
+*.dll
+*.dylib
+*.so
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.manifest
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.nfs*
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Node modules (if using any web components)
+node_modules/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Projucer backup files
+*.jucer~
+
+# Plugin validation cache
+pluginval_*
+
+# Audio unit cache
+AudioUnitCaches/
