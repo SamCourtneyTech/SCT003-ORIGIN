@@ -11,6 +11,14 @@
       <FILE id="rXuliC" name="PluginEditor.cpp" compile="1" resource="0"
             file="Source/PluginEditor.cpp"/>
       <FILE id="FfcslO" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+      <FILE id="dspEng1" name="DSPEngine.cpp" compile="1" resource="0"
+            file="Source/DSPEngine.cpp"/>
+      <FILE id="dspEng2" name="DSPEngine.h" compile="0" resource="0"
+            file="Source/DSPEngine.h"/>
+      <FILE id="matlb1" name="MatlabParser.cpp" compile="1" resource="0"
+            file="Source/MatlabParser.cpp"/>
+      <FILE id="matlb2" name="MatlabParser.h" compile="0" resource="0"
+            file="Source/MatlabParser.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

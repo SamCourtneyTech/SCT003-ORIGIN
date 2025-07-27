@@ -8,6 +8,50 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
+#include <algorithm>
+
+// Simple DelayLine class implementation
+class DelayLine
+{
+public:
+    DelayLine(int maxDelay = 1024) : maxDelaySize(maxDelay)
+    {
+        buffer.resize(maxDelaySize, 0.0f);
+    }
+    
+    float process(float input, int delaySamples)
+    {
+        delaySamples = std::clamp(delaySamples, 1, maxDelaySize - 1); // Minimum 1 sample delay
+        
+        // Store the current input
+        buffer[writeIndex] = input;
+        
+        // Calculate read index for the delayed sample
+        int readIndex = writeIndex - delaySamples;
+        if (readIndex < 0)
+            readIndex += maxDelaySize;
+        
+        // Get the delayed sample
+        float output = buffer[readIndex];
+        
+        // Advance write index
+        writeIndex = (writeIndex + 1) % maxDelaySize;
+        
+        return output;
+    }
+    
+    void clear()
+    {
+        std::fill(buffer.begin(), buffer.end(), 0.0f);
+        writeIndex = 0;
+    }
+
+private:
+    std::vector<float> buffer;
+    int writeIndex = 0;
+    int maxDelaySize;
+};
 
 //==============================================================================
 OriginAudioProcessor::OriginAudioProcessor()
@@ -22,6 +66,13 @@ OriginAudioProcessor::OriginAudioProcessor()
                        )
 #endif
 {
+    // Initialize variables
+    variables["pi"] = static_cast<float>(M_PI);
+    variables["e"] = static_cast<float>(M_E);
+    variables["x"] = 0.0f;
+    
+    currentEquation = "x"; // Default pass-through
+    equationValid = true;
 }
 
 OriginAudioProcessor::~OriginAudioProcessor()
@@ -95,12 +146,17 @@ void OriginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
+    this->sampleRate = sampleRate;
+    variables["fs"] = static_cast<float>(sampleRate);
+    variables["Fs"] = static_cast<float>(sampleRate);
+    resetDSP();
 }
 
 void OriginAudioProcessor::releaseResources()
 {
     // When playback stops, you can use this as an opportunity to free up any
     // spare memory, etc.
+    resetDSP();
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -154,7 +210,13 @@ void OriginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     {
         auto* channelData = buffer.getWritePointer (channel);
 
-        // ..do something to the data...
+        // Process each sample through our simple DSP
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            float inputSample = channelData[sample];
+            float outputSample = processSample(inputSample);
+            channelData[sample] = outputSample;
+        }
     }
 }
 
@@ -181,6 +243,237 @@ void OriginAudioProcessor::setStateInformation (const void* data, int sizeInByte
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
+}
+
+//==============================================================================
+// This creates new instances of the plugin..
+void OriginAudioProcessor::setEquation(const juce::String& equation)
+{
+    currentEquation = equation;
+    // Simple validation - just check if it's not empty
+    equationValid = !equation.isEmpty();
+    if (!equationValid)
+    {
+        errorMessage = "Empty equation";
+    }
+    else
+    {
+        errorMessage.clear();
+    }
+}
+
+bool OriginAudioProcessor::isEquationValid() const
+{
+    return equationValid;
+}
+
+juce::String OriginAudioProcessor::getEquationError() const
+{
+    return juce::String(errorMessage);
+}
+
+// Real-time mathematical expression evaluator
+float OriginAudioProcessor::processSample(float input)
+{
+    if (!equationValid)
+        return input;
+    
+    // Set current input
+    variables["x"] = input;
+    
+    try
+    {
+        // Evaluate the mathematical expression
+        float output = evaluateExpression(currentEquation, input);
+        
+        // Store output history for future references (y_prev, etc.)
+        outputHistory["y_prev2"] = outputHistory["y_prev"];
+        outputHistory["y_prev"] = output;
+        
+        return output;
+    }
+    catch (...)
+    {
+        return input; // Fall back to pass-through on error
+    }
+}
+
+float OriginAudioProcessor::evaluateExpression(const juce::String& expr, float x)
+{
+    juce::String cleanExpr = expr.removeCharacters(" \t\n\r");
+    int pos = 0;
+    
+    // Handle simple cases first
+    if (cleanExpr == "x") return x;
+    if (cleanExpr == "0") return 0.0f;
+    if (cleanExpr == "1") return 1.0f;
+    
+    return evaluateTerm(cleanExpr, pos);
+}
+
+float OriginAudioProcessor::evaluateTerm(juce::String& expr, int& pos)
+{
+    float result = evaluateFactor(expr, pos);
+    
+    while (pos < expr.length())
+    {
+        skipWhitespace(expr, pos);
+        if (pos >= expr.length()) break;
+        
+        char op = expr[pos];
+        if (op == '+' || op == '-')
+        {
+            pos++;
+            float nextFactor = evaluateFactor(expr, pos);
+            if (op == '+')
+                result += nextFactor;
+            else
+                result -= nextFactor;
+        }
+        else
+        {
+            break;
+        }
+    }
+    
+    return result;
+}
+
+float OriginAudioProcessor::evaluateFactor(juce::String& expr, int& pos)
+{
+    float result = 1.0f;
+    bool firstTerm = true;
+    
+    while (pos < expr.length())
+    {
+        skipWhitespace(expr, pos);
+        if (pos >= expr.length()) break;
+        
+        char ch = expr[pos];
+        
+        // Handle multiplication and division
+        if (!firstTerm && ch != '*' && ch != '/' && ch != '+' && ch != '-')
+        {
+            // Implicit multiplication
+        }
+        else if (ch == '*' || ch == '/')
+        {
+            pos++;
+            skipWhitespace(expr, pos);
+        }
+        else if (ch == '+' || ch == '-')
+        {
+            break; // Let evaluateTerm handle this
+        }
+        
+        float factor = 1.0f;
+        
+        // Parse numbers
+        if (std::isdigit(ch) || ch == '.')
+        {
+            factor = evaluateNumber(expr, pos);
+        }
+        // Parse variables
+        else if (ch == 'x')
+        {
+            pos++;
+            factor = variables["x"];
+        }
+        else if (expr.substring(pos).startsWith("y_prev"))
+        {
+            if (expr.substring(pos).startsWith("y_prev2"))
+            {
+                pos += 7; // "y_prev2"
+                factor = outputHistory["y_prev2"];
+            }
+            else
+            {
+                pos += 6; // "y_prev"
+                factor = outputHistory["y_prev"];
+            }
+        }
+        // Parse z^-n (delay terms)
+        else if (expr.substring(pos).startsWith("z^-"))
+        {
+            pos += 3; // Skip "z^-"
+            int delayAmount = static_cast<int>(evaluateNumber(expr, pos));
+            DelayLine* delay = getDelayLine(delayAmount);
+            factor = delay->process(variables["x"], delayAmount);
+        }
+        // Parse parentheses
+        else if (ch == '(')
+        {
+            pos++; // Skip '('
+            factor = evaluateTerm(expr, pos);
+            if (pos < expr.length() && expr[pos] == ')')
+                pos++; // Skip ')'
+        }
+        else
+        {
+            pos++; // Skip unknown character
+            continue;
+        }
+        
+        if (firstTerm)
+        {
+            result = factor;
+            firstTerm = false;
+        }
+        else
+        {
+            if (pos > 1 && expr[pos-2] == '/')
+                result /= factor;
+            else
+                result *= factor;
+        }
+        
+        skipWhitespace(expr, pos);
+        if (pos >= expr.length() || (expr[pos] != '*' && expr[pos] != '/' && !std::isdigit(expr[pos]) && expr[pos] != 'x' && expr[pos] != 'y' && expr[pos] != 'z' && expr[pos] != '('))
+            break;
+    }
+    
+    return result;
+}
+
+float OriginAudioProcessor::evaluateNumber(juce::String& expr, int& pos)
+{
+    juce::String numberStr;
+    
+    while (pos < expr.length() && (std::isdigit(expr[pos]) || expr[pos] == '.'))
+    {
+        numberStr += expr[pos];
+        pos++;
+    }
+    
+    return numberStr.getFloatValue();
+}
+
+void OriginAudioProcessor::skipWhitespace(const juce::String& expr, int& pos)
+{
+    while (pos < expr.length() && std::isspace(expr[pos]))
+        pos++;
+}
+
+void OriginAudioProcessor::resetDSP()
+{
+    for (auto& pair : delayLines)
+    {
+        pair.second->clear();
+    }
+    variables["x"] = 0.0f;
+}
+
+DelayLine* OriginAudioProcessor::getDelayLine(int delayAmount)
+{
+    auto it = delayLines.find(delayAmount);
+    if (it == delayLines.end())
+    {
+        auto delayLine = std::make_unique<DelayLine>(std::max(delayAmount + 1, 1024));
+        DelayLine* ptr = delayLine.get();
+        delayLines[delayAmount] = std::move(delayLine);
+        return ptr;
+    }
+    return it->second.get();
 }
 
 //==============================================================================
